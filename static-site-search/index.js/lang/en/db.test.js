@@ -3,49 +3,21 @@ const fs = require('fs')
 const {DB} = require('./db');
 
 var dbdir = undefined
-
+var doc1 = undefined
 beforeAll(() => {
     dbdir = fs.mkdtempSync("static-site-search")
     let db = new DB(dbdir)
-
-    db.addDocument("this is a very nice document", {"some meta": "my data"})
-
+    let doc = "this is a very nice document".split(" ")
+    let docmeta =  {"some meta": "my data"}
+    doc1 = db.addDocument(doc, docmeta)
 })
 
 afterAll(() => {
     fs.rmSync(dbdir, { recursive: true})
 })
 
-test('db list dirs', () => {
-    let db = new DB(dbdir)
-    let result = db.listDocumentsWithTerm("hide")
-    // console.info(result)
-})
-
-
-test('scoring', () => {
-    let db = new DB(dbdir)
-    let term = 'hide'
-    let result = db.listDocumentsWithTerm(term)
-
-    db.score(term, result)
-        .map(score => console.info("Score "+score))
-        ;
-})
-
 test('search', () => {
     let db = new DB(dbdir)
-    let term = 'hide'
-    db.search(term)
-        .map(score => console.info("Score "+JSON.stringify(score)))
-        ;
-})
-
-
-test('search for god', () => {
-    let db = new DB(dbdir)
-    let term = 'god'
-    db.search(term)
-        .map(score => console.info("Score "+JSON.stringify(score)))
-        ;
+    let result = db.search("document")
+    expect(result[0]["some meta"]).toBe("my data")
 })

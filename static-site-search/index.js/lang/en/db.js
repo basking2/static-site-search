@@ -49,13 +49,18 @@ class DB {
             fs.mkdirSync(path.dirname(f), { recursive: true })
         }
 
+        let obj = undefined
+
         if (fs.existsSync(f)) {
-            let obj = JSON.parse(fs.readFileSync(f, 'utf-8'))
+            obj = JSON.parse(fs.readFileSync(f, 'utf-8'))
             obj = updateFn(obj)
             fs.writeFileSync(f, JSON.stringify(obj))
         } else {
-            fs.writeFileSync(f, JSON.stringify(emptyFn()))
+            obj = emptyFn()
+            fs.writeFileSync(f, JSON.stringify(obj))
         }
+
+        return obj
     }
 
     getJson(id) {
@@ -100,6 +105,13 @@ class DB {
         return `termdoc/${term}/${docId}_info.json`
     }
 
+    /**
+     * 
+     * @param {string} docId Document id.
+     * @param {array} doc Array of strings that make up a document.
+     * @param {object} docinfo User metadata to include.
+     * @returns 
+     */
     addDocumentWithId(docId, doc, docinfo={}) {
 
         // Count the valid terms in this document.
@@ -152,6 +164,8 @@ class DB {
                 }
             )
         }
+
+        return docId
     }
 
     /**
@@ -165,7 +179,7 @@ class DB {
             return
         }
 
-        this.upsertJson(
+        let globalInfo = this.upsertJson(
             this.keyForGlobalInfo(),
             global => {
                 global.size += 1
@@ -183,6 +197,8 @@ class DB {
                 return global
             }
         )
+
+        return "" + globalInfo.lastId
     }
 
     /**
