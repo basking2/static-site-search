@@ -1,0 +1,21 @@
+{
+  "name": "@basking2/static-site-search",
+  "version": "1.0.0",
+  "description": "NPM module to build and index of a static site and access that index over HTTP.",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": [
+    "search",
+    "static-site"
+  ],
+  "author": "Sam Baskinger <basking2@yahoo.com>",
+  "license": "MIT",
+  "dependencies": {
+    "node-snowball": "^0.7.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
