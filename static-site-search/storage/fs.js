@@ -4,9 +4,23 @@ const path = require('path')
 class FsStorage {
     constructor(root) {
         this.root = root
+        this.enable_debug = false
         if (!fs.existsSync(this.root)) {
             fs.mkdirSync(this.root, { recursive: true })
         }
+    }
+
+    debug(msg) {
+        const prefix = "FsStorage Debug"
+        if (!this.enable_debug) {
+            return
+        }
+
+        if (msg instanceof Function) {
+            msg = msg()
+        }
+
+        console.debug(`${prefix} - ${msg}`)
     }
 
     /**
@@ -21,6 +35,8 @@ class FsStorage {
      */
     async upsertJson(id, updateFn, emptyFn) {
         let f = `${this.root}/${id}`
+
+        this.debug(() => `Making path ${path.dirname(f)}.`)
 
         fs.mkdirSync(path.dirname(f), { recursive: true })
 
@@ -53,6 +69,8 @@ class FsStorage {
     async getJson(id) {
         const key = `${this.root}/${id}`
 
+        this.debug(() => `Reading key ${key}.`)
+
         return new Promise((resolve, reject) => {
             fs.readFile(`${this.root}/${id}`, {'encoding': 'utf-8'}, (err, data) => {
                 if (err) {
@@ -74,11 +92,17 @@ class FsStorage {
      * @param {string} term The search term, already processed (lower cased, stemmed, etc).
      */
     async listDocumentsWithTerm(term) {
+        // FIXME storage leak "termdoc".
+
         let dir = await fs.opendirSync(`${this.root}/termdoc`)
+        this.debug(() => `Listing dir ${dir}.`)
+
         let docs = {}
         for (let dirent = await dir.read(); dirent; dirent = await dir.read()) {
             if (dirent.name.startsWith(term)) {
+                this.debug(() => `Listing docs in dir ${this.root}/termdoc/${dirent.name}.`)
                 let termdir = fs.opendirSync(`${this.root}/termdoc/${dirent.name}`)
+
                 for (let doc = termdir.readSync(); doc; doc = termdir.readSync()) {
                     docs[doc.name.split("_")[0]] = 1
                 }

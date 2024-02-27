@@ -1,7 +1,6 @@
-const fs = require('fs')
-const path = require('path')
 const { Stopwords, Stemmer } = require('./lang/en')
 const { FsStorage } = require('./storage/fs')
+const keys = require('./storage/keys')
 
 class DB {
     constructor(root) {
@@ -16,39 +15,6 @@ class DB {
 
     stemWord(term) {
         return this.stemmer.stemWord(term)
-    }
-
-    /**
-     * @returns Global database information.
-     */
-    keyForGlobalInfo() {
-        return `global.json`
-    }
-
-    /**
-     * The key that stores the count of documents containing the term.
-     * @param {string} term 
-     * @returns 
-     */
-    keyForTermInDocumentCount(term) {
-        return `terms/${term}_doc_count.json`
-    }
-
-    /**
-     * Key that stores information about a document, such as its length.
-     * @param {string} docId 
-     */
-    keyForDocumentInfo(docId) {
-        return `doc/${docId}_info.json`
-    }
-
-    /**
-     * Key that stores information about a term in a document.
-     * @param {string} term The term.
-     * @param {string} docId The document ID.
-     */
-    keyForTermInDocumentInfo(term, docId) {
-        return `termdoc/${term}/${docId}_info.json`
     }
 
     /**
@@ -73,7 +39,7 @@ class DB {
 
     async score(term, docId, docInfo=undefined, global=undefined) {
         if (!global) {
-            global = await this.storage.getJson(this.keyForGlobalInfo())
+            global = await this.storage.getJson(keys.forGlobalInfo())
         }
 
         if (docId instanceof Array) {
@@ -82,9 +48,9 @@ class DB {
 
         term = this.processTerm(term)
 
-        let docLen = (docInfo ? docInfo : await this.storage.getJson(this.keyForDocumentInfo(docId))).length
-        let docTermCount = await this.storage.getJson(this.keyForTermInDocumentCount(term)).count
-        let termCount = await this.storage.getJson(this.keyForTermInDocumentInfo(term, docId)).count || 0
+        let docLen = (docInfo ? docInfo : await this.storage.getJson(keys.forDocumentInfo(docId))).length
+        let docTermCount = await this.storage.getJson(keys.forTermInDocumentCount(term)).count
+        let termCount = await this.storage.getJson(keys.forTermInDocumentInfo(term, docId)).count || 0
 
         let tf = termCount / docLen
         let idf = Math.log10(global.size / docTermCount)
@@ -95,11 +61,11 @@ class DB {
     async search(term) {
         term = this.processTerm(term)
         let docs = await this.storage.listDocumentsWithTerm(term)
-        let global = await this.storage.getJson(this.keyForGlobalInfo())
+        let global = await this.storage.getJson(keys.forGlobalInfo())
 
         let m = []
         for (let docId of docs) {
-            let docInfo = await this.storage.getJson(this.keyForDocumentInfo(docId))
+            let docInfo = await this.storage.getJson(keys.forDocumentInfo(docId))
             docInfo.score = await this.score(term, docId, docInfo, global)
             m.push(docInfo)
         }
@@ -133,7 +99,7 @@ class DB {
         for (let term in seenTerms) {
             // Record documents that have terms in them.
             await this.storage.upsertJson(
-                this.keyForTermInDocumentCount(term),
+                keys.forTermInDocumentCount(term),
                 obj => {
                     obj.count += 1
                     return obj
@@ -143,7 +109,7 @@ class DB {
  
             // Record doc length.
             await this.storage.upsertJson(
-                this.keyForDocumentInfo(docId),
+                keys.forDocumentInfo(docId),
                 obj => {
                     return {...docinfo, length: doc.length};
                 },
@@ -154,7 +120,7 @@ class DB {
 
             // Record term count for this document.
             await this.storage.upsertJson(
-                this.keyForTermInDocumentInfo(term, docId),
+                keys.forTermInDocumentInfo(term, docId),
                 obj => {
                     obj.count = seenTerms[term]
                     return obj
@@ -165,9 +131,21 @@ class DB {
                     }
                 }
             )
+
+            // Add this document to the list of documents for this term.
+            await this.storage.upsertJson(
+                keys.forTermDocumentList(term),
+                lst => {
+                    lst.push(docId)
+                    return lst
+                },
+                () => {
+                    return [ docId ]
+                }
+            )
         }
 
-        return docId
+        return Promise.resolve(docId)
     }
 
     /**
@@ -182,7 +160,7 @@ class DB {
         }
 
         let globalInfo = await this.storage.upsertJson(
-            this.keyForGlobalInfo(),
+            keys.forGlobalInfo(),
             global => {
                 global.size += 1
                 global.lastId = global.size
