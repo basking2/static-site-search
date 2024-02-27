@@ -1,5 +1,7 @@
 const snowball = require('node-snowball')
 const fs = require('fs')
+const { stopwords } = require('./en/stopwords')
+
 class Stemmer {
 
     constructor() {
@@ -12,9 +14,7 @@ class Stemmer {
 
 class Stopwords {
     constructor() {
-        this.stopwords = fs.readFileSync("./static-site-search/lang/en/stopwords.txt", "utf-8")
-        .split("\n")
-        .reduce((db, word) => { db[word]=1; return db; }, {})    
+        this.stopwords = stopwords.reduce((db, word) => { db[word]=1; return db; }, {})    
     }
 
     isStopword(term) {
