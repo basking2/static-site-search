@@ -1,38 +1,22 @@
-const fs = require('fs')
-const path = require('path')
-const snowball = require('node-snowball')
 
-class DB {
-    constructor(root) {
-        this.root = root
-        this.stopwords = fs.readFileSync("./static-site-search/index.js/lang/en/stopwords.txt", "utf-8")
-            .split("\n")
-            .reduce((db, word) => { db[word]=1; return db; }, {})
 
-        if (!fs.existsSync(this.root)) {
-            fs.mkdirSync(this.root, { recursive: true })
-        }
+
+class AbstractDB {
+
+    isStopword(term) {
+        throw new Error("isStopword is undefined.")
     }
 
-    
+    stemWord(term) {
+        throw new Error("stemWord is undefined.")
+    }
+
     /**
-     * 
-     * @param {string} term The term to process.
-     * @returns False if this is a stop word, empty or punctuation. 
-     *   Otherwise, returns the stemmed version of this word.
+     * Return the parsed JSON object representing document info.
+     * @param {string} id 
      */
-    processTerm(term) {
-        term = term.toLowerCase()
-
-        if (term in this.stopwords) {
-            return false;
-        }
-
-        if (! term.match(/^[a-zA-Z0-9'"\-_]+$/)) {
-            return false;
-        }
-
-        return snowball.stemword(term)
+    getJson(id) {
+        throw new Error("getJson is undefined.")
     }
 
     /**
@@ -40,37 +24,26 @@ class DB {
      * @param {string} id The ID.
      * @param {Function} updateFn Takes the read object and returns an updated one.
      *   The returned object may be the same one passed in.
+     *   This will be returned by this function.
      * @param {Function} emptyFn Returns an initialize object.
+     *   This will be returned by this function.
+     * @returns {object} The object written as JSON.
      */
     upsertJson(id, updateFn, emptyFn) {
-        let f = `${this.root}/${id}`
-
-        if (!fs.existsSync(path.dirname(f))) {
-            fs.mkdirSync(path.dirname(f), { recursive: true })
-        }
-
-        let obj = undefined
-
-        if (fs.existsSync(f)) {
-            obj = JSON.parse(fs.readFileSync(f, 'utf-8'))
-            obj = updateFn(obj)
-            fs.writeFileSync(f, JSON.stringify(obj))
-        } else {
-            obj = emptyFn()
-            fs.writeFileSync(f, JSON.stringify(obj))
-        }
-
-        return obj
+        throw new Error("upsertJson is undefined.")
     }
 
-    getJson(id) {
-        const key = `${this.root}/${id}`
-        if (fs.existsSync(key)) {
-            return JSON.parse(fs.readFileSync(`${this.root}/${id}`, 'utf-8'))
-        } else {
-            return {}
-        }
+    /**
+     * Given a term, list the documents that contain that term or the term is a prefix.
+     * 
+     * These will be scored to build the final document list.
+     * 
+     * @param {string} term 
+     */
+    listDocumentsWithTerm(term) {
+        throw new Error("listDocumentsWithTerm is undefined.")
     }
+    
 
     /**
      * @returns Global database information.
@@ -105,6 +78,62 @@ class DB {
         return `termdoc/${term}/${docId}_info.json`
     }
 
+    /**
+     * 
+     * @param {string} term The term to process.
+     * @returns False if this is a stop word, empty or punctuation. 
+     *   Otherwise, returns the stemmed version of this word.
+     */
+    processTerm(term) {
+        term = term.toLowerCase()
+
+        if (this.isStopword(term)) {
+            return false;
+        }
+
+        if (! term.match(/^[a-zA-Z0-9'"\-_]+$/)) {
+            return false;
+        }
+
+        return this.stemWord(term)
+    }
+
+    score(term, docId, docInfo=undefined, global=undefined) {
+        if (!global) {
+            global = this.getJson(this.keyForGlobalInfo())
+        }
+
+        if (docId instanceof Array) {
+            return docId.map(d => this.score(term, d, docInfo, global))
+        }
+
+        term = this.processTerm(term)
+
+
+        let docLen = (docInfo ? docInfo : this.getJson(this.keyForDocumentInfo(docId))).length
+        let docTermCount = this.getJson(this.keyForTermInDocumentCount(term)).count
+        let termCount = this.getJson(this.keyForTermInDocumentInfo(term, docId)).count || 0
+
+        let tf = termCount / docLen
+        let idf = Math.log10(global.size / docTermCount)
+
+        return tf * idf
+    }
+
+    search(term) {
+        let docs = this.listDocumentsWithTerm(term)
+        let global = this.getJson(this.keyForGlobalInfo())
+
+        return docs
+            .map(docId => {
+                let docInfo = this.getJson(this.keyForDocumentInfo(docId))
+                docInfo.score = this.score(term, docId, docInfo, global)
+                return docInfo
+            })
+            // Reverse sort, greatest score to least.
+            .sort((a, b) => b.score - a.score)
+        
+    }
     /**
      * 
      * @param {string} docId Document id.
@@ -199,68 +228,10 @@ class DB {
         )
 
         return "" + globalInfo.lastId
-    }
-
-    /**
-     * Given a term, list the documents that contain that term or the term is a prefix.
-     * 
-     * @param {string} term 
-     */
-    listDocumentsWithTerm(term) {
-        term = this.processTerm(term)
-        let dir = fs.opendirSync(`${this.root}/termdoc`)
-        let docs = {}
-        for (let dirent = dir.readSync(); dirent; dirent = dir.readSync()) {
-            if (dirent.name.startsWith(term)) {
-                let termdir = fs.opendirSync(`${this.root}/termdoc/${dirent.name}`)
-                for (let doc = termdir.readSync(); doc; doc = termdir.readSync()) {
-                    docs[doc.name.split("_")[0]] = 1
-                }
-                termdir.closeSync()
-            }
-        }
-        dir.closeSync()
-        return Object.keys(docs)
-    }
-
-    score(term, docId, docInfo=undefined, global=undefined) {
-        if (!global) {
-            global = this.getJson(this.keyForGlobalInfo())
-        }
-
-        if (docId instanceof Array) {
-            return docId.map(d => this.score(term, d, docInfo, global))
-        }
-
-        term = this.processTerm(term)
-
-
-        let docLen = (docInfo ? docInfo : this.getJson(this.keyForDocumentInfo(docId))).length
-        let docTermCount = this.getJson(this.keyForTermInDocumentCount(term)).count
-        let termCount = this.getJson(this.keyForTermInDocumentInfo(term, docId)).count || 0
-
-        let tf = termCount / docLen
-        let idf = Math.log10(global.size / docTermCount)
-
-        return tf * idf
-    }
-
-    search(term) {
-        let docs = this.listDocumentsWithTerm(term)
-        let global = this.getJson(this.keyForGlobalInfo())
-
-        return docs
-            .map(docId => {
-                let docInfo = this.getJson(this.keyForDocumentInfo(docId))
-                docInfo.score = this.score(term, docId, docInfo, global)
-                return docInfo
-            })
-            // Reverse sort, greatest score to least.
-            .sort((a, b) => b.score - a.score)
-        
-    }
+    }    
 }
 
+
 module.exports = {
-    DB
+    AbstractDB
 }
