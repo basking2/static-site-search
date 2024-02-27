@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const keys = require('./keys')
 
 class FsStorage {
     constructor(root) {
@@ -91,9 +92,7 @@ class FsStorage {
      * 
      * @param {string} term The search term, already processed (lower cased, stemmed, etc).
      */
-    async listDocumentsWithTerm(term) {
-        // FIXME storage leak "termdoc".
-
+    async listDocumentsWithTerm_Cheating(term) {
         let dir = await fs.opendirSync(`${this.root}/termdoc`)
         this.debug(() => `Listing dir ${dir}.`)
 
@@ -112,7 +111,13 @@ class FsStorage {
         await dir.close()
         return Object.keys(docs)
     }
-    
+
+    async listDocumentsWithTerm(term) {
+        let file = keys.forTermDocumentList(term)
+        let data = fs.readFileSync(`${this.root}/${file}`)
+        return JSON.parse(data)
+    }
+
 }
 
 module.exports =  { FsStorage }

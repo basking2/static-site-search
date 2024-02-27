@@ -144,8 +144,6 @@ class DB {
                 }
             )
         }
-
-        return Promise.resolve(docId)
     }
 
     /**
