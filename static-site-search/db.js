@@ -19,37 +19,6 @@ class DB {
     }
 
     /**
-     * 
-     * @param {string} id The ID.
-     * @param {Function} updateFn Takes the read object and returns an updated one.
-     *   The returned object may be the same one passed in.
-     *   This will be returned by this function.
-     * @param {Function} emptyFn Returns an initialize object.
-     *   This will be returned by this function.
-     * @returns {object} The object written as JSON.
-     */
-    upsertJson(id, updateFn, emptyFn) {
-        return this.storage.upsertJson(id, updateFn, emptyFn)
-    }
-
-    getJson(id) {
-        return this.storage.getJson(id)
-    }
-
-    /**
-     * Given a term, list the documents that contain that term or the term is a prefix.
-     * 
-     * These will be scored to build the final document list.
-     * 
-     * @param {string} term 
-     */
-    listDocumentsWithTerm(term) {
-        return this.storage.listDocumentsWithTerm(term)
-    }
-
-  
-
-    /**
      * @returns Global database information.
      */
     keyForGlobalInfo() {
@@ -102,43 +71,42 @@ class DB {
         return this.stemWord(term)
     }
 
-    score(term, docId, docInfo=undefined, global=undefined) {
+    async score(term, docId, docInfo=undefined, global=undefined) {
         if (!global) {
-            global = this.getJson(this.keyForGlobalInfo())
+            global = await this.storage.getJson(this.keyForGlobalInfo())
         }
 
         if (docId instanceof Array) {
-            return docId.map(d => this.score(term, d, docInfo, global))
+            return Promise.resolve(docId.map(d => this.score(term, d, docInfo, global)))
         }
 
         term = this.processTerm(term)
 
-
-        let docLen = (docInfo ? docInfo : this.getJson(this.keyForDocumentInfo(docId))).length
-        let docTermCount = this.getJson(this.keyForTermInDocumentCount(term)).count
-        let termCount = this.getJson(this.keyForTermInDocumentInfo(term, docId)).count || 0
+        let docLen = (docInfo ? docInfo : await this.storage.getJson(this.keyForDocumentInfo(docId))).length
+        let docTermCount = await this.storage.getJson(this.keyForTermInDocumentCount(term)).count
+        let termCount = await this.storage.getJson(this.keyForTermInDocumentInfo(term, docId)).count || 0
 
         let tf = termCount / docLen
         let idf = Math.log10(global.size / docTermCount)
 
-        return tf * idf
+        return Promise.resolve(tf * idf)
     }
 
-    search(term) {
+    async search(term) {
         term = this.processTerm(term)
-        let docs = this.listDocumentsWithTerm(term)
-        let global = this.getJson(this.keyForGlobalInfo())
+        let docs = await this.storage.listDocumentsWithTerm(term)
+        let global = await this.storage.getJson(this.keyForGlobalInfo())
 
-        return docs
-            .map(docId => {
-                let docInfo = this.getJson(this.keyForDocumentInfo(docId))
-                docInfo.score = this.score(term, docId, docInfo, global)
-                return docInfo
-            })
-            // Reverse sort, greatest score to least.
-            .sort((a, b) => b.score - a.score)
-        
+        let m = []
+        for (let docId of docs) {
+            let docInfo = await this.storage.getJson(this.keyForDocumentInfo(docId))
+            docInfo.score = await this.score(term, docId, docInfo, global)
+            m.push(docInfo)
+        }
+
+        return m.sort((a, b) => b.score - a.score)
     }
+    
     /**
      * 
      * @param {string} docId Document id.
@@ -146,7 +114,7 @@ class DB {
      * @param {object} docinfo User metadata to include.
      * @returns 
      */
-    addDocumentWithId(docId, doc, docinfo={}) {
+    async addDocumentWithId(docId, doc, docinfo={}) {
 
         // Count the valid terms in this document.
         let seenTerms = {}
@@ -164,7 +132,7 @@ class DB {
         // For each term.
         for (let term in seenTerms) {
             // Record documents that have terms in them.
-            this.upsertJson(
+            await this.storage.upsertJson(
                 this.keyForTermInDocumentCount(term),
                 obj => {
                     obj.count += 1
@@ -174,7 +142,7 @@ class DB {
             )
  
             // Record doc length.
-            this.upsertJson(
+            await this.storage.upsertJson(
                 this.keyForDocumentInfo(docId),
                 obj => {
                     return {...docinfo, length: doc.length};
@@ -185,7 +153,7 @@ class DB {
             )
 
             // Record term count for this document.
-            this.upsertJson(
+            await this.storage.upsertJson(
                 this.keyForTermInDocumentInfo(term, docId),
                 obj => {
                     obj.count = seenTerms[term]
@@ -207,28 +175,24 @@ class DB {
      * @param {array} doc An array of words that make up the document.
      * @returns A generated ID for the document.
      */
-    addDocument(doc, docinfo = {}) {
+    async addDocument(doc, docinfo = {}) {
 
         if (!doc || doc.length == 0) {
             return
         }
 
-        let globalInfo = this.upsertJson(
+        let globalInfo = await this.storage.upsertJson(
             this.keyForGlobalInfo(),
             global => {
                 global.size += 1
                 global.lastId = global.size
 
-                this.addDocumentWithId(global.lastId, doc, docinfo)
-
-                return global
+                return this.addDocumentWithId(global.lastId, doc, docinfo).then(() => global)
             },
             () => {
                 let global = { size: 0, lastId: 0 }
 
-                this.addDocumentWithId(global.lastId, doc, docinfo)
-
-                return global
+                return this.addDocumentWithId(global.lastId, doc, docinfo).then(() => global)
             }
         )
 

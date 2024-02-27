@@ -19,34 +19,51 @@ class FsStorage {
      *   This will be returned by this function.
      * @returns {object} The object written as JSON.
      */
-    upsertJson(id, updateFn, emptyFn) {
+    async upsertJson(id, updateFn, emptyFn) {
         let f = `${this.root}/${id}`
 
-        if (!fs.existsSync(path.dirname(f))) {
-            fs.mkdirSync(path.dirname(f), { recursive: true })
-        }
+        fs.mkdirSync(path.dirname(f), { recursive: true })
 
         let obj = undefined
 
-        if (fs.existsSync(f)) {
-            obj = JSON.parse(fs.readFileSync(f, 'utf-8'))
-            obj = updateFn(obj)
-            fs.writeFileSync(f, JSON.stringify(obj))
-        } else {
-            obj = emptyFn()
-            fs.writeFileSync(f, JSON.stringify(obj))
-        }
+        return new Promise((resolve, reject) => {
+            fs.stat(f, (err, _) => {
+                var p
+                if (err) {
+                    p = Promise.resolve().then(() => emptyFn())
+                } else {
+                    obj = JSON.parse(fs.readFileSync(f, {encoding: 'utf-8'}))
+                    p = Promise.resolve().then(() => updateFn(obj))
+                }
 
-        return obj
+
+                return p.then(obj => {
+                    fs.writeFile(f, JSON.stringify(obj), {}, err => {
+                        if (err) {
+                            reject(err)
+                        } else {
+                            resolve(obj)
+                        }
+                    })
+                })
+            })
+        })
     }
 
-    getJson(id) {
+    async getJson(id) {
         const key = `${this.root}/${id}`
-        if (fs.existsSync(key)) {
-            return JSON.parse(fs.readFileSync(`${this.root}/${id}`, 'utf-8'))
-        } else {
-            return {}
-        }
+
+        return new Promise((resolve, reject) => {
+            fs.readFile(`${this.root}/${id}`, {'encoding': 'utf-8'}, (err, data) => {
+                if (err) {
+                    reject(err)
+                } else {
+                    const json = JSON.parse(data)
+                    resolve(json)
+                }
+            })
+    
+        })
     }
 
     /**
@@ -56,19 +73,19 @@ class FsStorage {
      * 
      * @param {string} term The search term, already processed (lower cased, stemmed, etc).
      */
-    listDocumentsWithTerm(term) {
-        let dir = fs.opendirSync(`${this.root}/termdoc`)
+    async listDocumentsWithTerm(term) {
+        let dir = await fs.opendirSync(`${this.root}/termdoc`)
         let docs = {}
-        for (let dirent = dir.readSync(); dirent; dirent = dir.readSync()) {
+        for (let dirent = await dir.read(); dirent; dirent = await dir.read()) {
             if (dirent.name.startsWith(term)) {
                 let termdir = fs.opendirSync(`${this.root}/termdoc/${dirent.name}`)
                 for (let doc = termdir.readSync(); doc; doc = termdir.readSync()) {
                     docs[doc.name.split("_")[0]] = 1
                 }
-                termdir.closeSync()
+                await termdir.close()
             }
         }
-        dir.closeSync()
+        await dir.close()
         return Object.keys(docs)
     }
     
