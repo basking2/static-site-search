@@ -1,9 +1,11 @@
 
 const http = require('http')
 const keys = require('./keys')
+const { StorageInterface } = require('.')
 
-class HttpStorage {
+class HttpStorage extends StorageInterface {
     constructor(base) {
+        super()
         this.base = base
     }
 

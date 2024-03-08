@@ -1,10 +1,14 @@
 const { Stopwords, Stemmer } = require('./lang/en')
-const { FsStorage } = require('./storage/fs')
+const { StorageInterface } = require('./storage')
 const keys = require('./storage/keys')
 
 class DB {
-    constructor(root) {
-        this.storage = new FsStorage(root)
+    /**
+     * 
+     * @param {StorageInterface} storage 
+     */
+    constructor(storage) {
+        this.storage = storage
         this.stopwords = new Stopwords()
         this.stemmer = new Stemmer()
     }
@@ -37,6 +41,14 @@ class DB {
         return this.stemWord(term)
     }
 
+    /**
+     * 
+     * @param {string} term The processed term (result of this.processTerm()).
+     * @param {string} docId The document ID to check.
+     * @param {object} docInfo Document information.
+     * @param {object} global Global data from keys.forGlobalInfo().
+     * @returns 
+     */
     async score(term, docId, docInfo=undefined, global=undefined) {
         if (!global) {
             global = await this.storage.getJson(keys.forGlobalInfo())
@@ -46,11 +58,9 @@ class DB {
             return Promise.resolve(docId.map(d => this.score(term, d, docInfo, global)))
         }
 
-        term = this.processTerm(term)
-
         let docLen = (docInfo ? docInfo : await this.storage.getJson(keys.forDocumentInfo(docId))).length
-        let docTermCount = await this.storage.getJson(keys.forTermInDocumentCount(term)).count
-        let termCount = await this.storage.getJson(keys.forTermInDocumentInfo(term, docId)).count || 0
+        let docTermCount = (await this.storage.getJson(keys.forTermInDocumentCount(term))).count
+        let termCount = (await this.storage.getJson(keys.forTermInDocumentInfo(term, docId))).count || 0
 
         let tf = termCount / docLen
         let idf = Math.log10(global.size / docTermCount)
@@ -173,7 +183,7 @@ class DB {
         )
 
         return "" + globalInfo.lastId
-    }    
+    }
 }
 
 module.exports = {

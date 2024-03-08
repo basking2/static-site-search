@@ -1,9 +1,11 @@
 const fs = require('fs')
 const path = require('path')
 const keys = require('./keys')
+const { StorageInterface } = require('.')
 
-class FsStorage {
+class FsStorage extends StorageInterface {
     constructor(root) {
+        super()
         this.root = root
         this.enable_debug = false
         if (!fs.existsSync(this.root)) {
@@ -75,7 +77,11 @@ class FsStorage {
         return new Promise((resolve, reject) => {
             fs.readFile(`${this.root}/${id}`, {'encoding': 'utf-8'}, (err, data) => {
                 if (err) {
-                    reject(err)
+                    if (err.code == 'ENOENT') {
+                        resolve(undefined)
+                    } else {
+                        reject(err)
+                    }
                 } else {
                     const json = JSON.parse(data)
                     resolve(json)
@@ -113,9 +119,20 @@ class FsStorage {
     }
 
     async listDocumentsWithTerm(term) {
-        let file = keys.forTermDocumentList(term)
-        let data = fs.readFileSync(`${this.root}/${file}`)
-        return JSON.parse(data)
+        return new Promise((resolve, reject) => {
+            let file = keys.forTermDocumentList(term)
+            fs.readFile(`${this.root}/${file}`, {encoding: "utf-8"}, (err, data) => {
+                if (err) {
+                    if (err.code == 'ENOENT') {
+                        resolve([])
+                    } else {
+                        reject(err)
+                    }
+                } else {
+                    resolve(JSON.parse(data))
+                }
+            })    
+        })
     }
 
 }

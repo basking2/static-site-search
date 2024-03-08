@@ -4,7 +4,8 @@
   "description": "NPM module to build and index of a static site and access that index over HTTP.",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "add-to-db": "node static-site-search/cli.js"
   },
   "keywords": [
     "search",
