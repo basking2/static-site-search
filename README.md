@@ -1,0 +1,1 @@
+`snowball.es6` is from https://github.com/mazko/jssnowball/blob/master/js_snowball/lib/snowball.es6

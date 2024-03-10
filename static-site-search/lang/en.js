@@ -1,14 +1,14 @@
-const snowball = require('node-snowball')
-const fs = require('fs')
+const snowball_babel = require('./snowball.babel')
 const { stopwords } = require('./en/stopwords')
 
 class Stemmer {
 
     constructor() {
+        this.stemmer = snowball_babel.newStemmer("english")
     }
 
     stemWord(term) {
-        return snowball.stemword(term)
+        return this.stemmer.stem(term)
     }
 }
 
